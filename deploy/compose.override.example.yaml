@@ -1,0 +1,7 @@
+# What install-pi.sh writes as compose.override.yaml for a Pi: its camera, and the user the tracker runs as (who owns
+# config/ and secrets/). CI validates compose.yaml with this one.
+services:
+  tracker:
+    devices: ["/dev/v4l/by-id/usb-Example_Camera-video-index0:/dev/video0"]
+    group_add: ["44"]
+    user: "1000:1000"

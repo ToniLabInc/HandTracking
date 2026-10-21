@@ -1,0 +1,6 @@
+# Only the package (with its defaults.yaml) and the requirements go into the image.
+*
+!handtracker/**
+!requirements.txt
+**/__pycache__
+**/*.pyc

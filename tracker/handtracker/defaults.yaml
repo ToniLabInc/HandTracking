@@ -1,0 +1,115 @@
+# ORION hands tracker: every setting, at its default, with what it means.
+#
+# Don't edit this file. Put what you change in the Pi's deploy/config/tracker.yaml (the container's
+# /config/tracker.yaml): only the keys you change, under their sections, as here. Everything else comes from this file.
+# A wrong key or value stops the tracker with the reason in its log (`docker compose logs tracker`).
+# Changes need a restart (`docker compose restart tracker`), except `recognition` and `ignore`, which are reloaded
+# by themselves within a few seconds (a broken edit is logged, and the last good values stay).
+
+server:
+  host: 0.0.0.0                       # the addresses the MCP endpoint listens on (0.0.0.0: all of the Pi's)
+  port: 8770                          # its port; Orion's mcp_servers.hands.url is http://<pi>.local:<port>/mcp
+  path: /mcp                          # its path
+  token_file: /run/secrets/hands_token  # the bearer token Orion sends (Authorization: Bearer ...), one line
+  lan_only: true                      # refuse clients outside private, loopback and link-local addresses
+  max_listeners: 16                   # subscription streams open at once, at most
+  dead_client_after_s: 30             # a client that vanished without closing is noticed after this long
+
+camera:
+  device: /dev/video0                 # the camera (a device path, an index, or a video file to replay)
+  width: 640                          # requested capture width
+  height: 480                         # ...and height
+  fps: 30                             # requested frame rate
+  fourcc: MJPG                        # requested pixel format (MJPG: the camera compresses; USB 2 manages 640x480@30)
+  controls:                           # V4L2 controls set when it opens (names as `v4l2-ctl --list-ctrls` shows them)
+    exposure_dynamic_framerate: 0     # keep the frame rate in dim light instead of lengthening the exposure
+  buffer_frames: 2                    # frames the driver queues (few: little lag when processing falls behind)
+  mirror: true                        # flip the image like a mirror (a camera facing you); false if left/right swap
+  idle_grace_s: 15                    # the camera stays on this long after the last client leaves
+  always_on: false                    # keep the camera on with no client too (for testing)
+  reopen_every_s: 2                   # how often a camera that failed is tried again
+  exit_after_s: 60                    # no frames this long: the tracker exits (Docker restarts it)
+  fresh_s: 3                          # /health is ok while the last frame is at most this old...
+  warmup_s: 10                        # ...or while the camera turned on less than this long ago
+
+processing:
+  fps: 20                             # frames run through the model per second while a hand is in view
+  idle_fps: 10                        # ...and once none has been for idle_after_s (0: always fps)
+  idle_after_s: 1
+  deep_idle_fps: 5                    # ...and once none has been for deep_idle_after_s (0: idle_fps)
+  deep_idle_after_s: 30
+  full_rate_while_watched: true       # while Orion shows the live view, every frame runs at fps (a smooth view)
+  infer_width: 640                    # frames are scaled to this width for the model (0: as captured)
+
+model:
+  path: /opt/models/gesture_recognizer.task  # MediaPipe's gesture recognizer
+  num_hands: 2                        # hands looked for (1 or 2; the two-hand gestures need 2)
+  min_detection: 0.6                  # palm detector confidence
+  min_presence: 0.5                   # hand presence confidence
+  min_tracking: 0.5                   # tracking confidence (below it, the palm detector runs again)
+  wide_every: 3                       # with one hand in view, every this many frames also look for a second hand
+  two_hand_sticky_s: 1.5              # after two hands were seen, look for both on every frame this long
+
+live_view:                            # what Orion's HUD shows of your hands, made only while it shows it
+  fps: 20                             # frames a second at most (each processed frame, up to this)
+  picture_fps: 10                     # ...of which this many carry the camera's picture, when it is asked for
+  picture_width: 320                  # the picture's width (its height keeps the camera's proportions)
+  picture_quality: 60                 # its JPEG quality (10-95)
+  lease_s: 5                          # a client that reads the view without listening keeps it on this long
+
+intents:
+  keep: 20                            # gestures kept in orion://intents for a client to read
+
+status:
+  every_s: 5                          # CPU and memory are measured this often
+  log_every_s: 60                     # ...and written to the log this often
+
+logging:
+  level: INFO                         # DEBUG also logs each hold step of a shape
+
+debug:
+  inject_tool: false                  # offer the hands_inject tool (make a gesture as if seen; for tests only)
+
+# How gestures are recognised (reloaded live). Times in seconds; sizes and distances in palm lengths (wrist to the
+# middle finger's knuckle), so they work near and far from the camera.
+recognition:
+  min_score: 0.5                      # confidence the hand-shape classifier needs for a canned shape (0-1)
+  static_hold: 0.3                    # a hand shape must be held still this long to count...
+  hold_ratio: 0.75                    # ...in at least this share of the frames of the hold
+  max_gap: 0.25                       # longest gap between frames inside a hold (a short dropout is forgiven)
+  still_speed: 1.5                    # palm lengths per second: a hand moving faster doesn't hold a shape
+  cooldown: 1.0                       # the same hand shape isn't reported again within this long
+  repeat_every: 0.5                   # a shape still held after 2 s is reported again every this long...
+  max_hold: 8.0                       # ...until it has been held this long
+  pinch_on: 0.25                      # thumb tip to index tip: a pinch below this...
+  pinch_off: 0.38                     # ...and over above this
+  ok_touch: 0.42                      # ...and the OK sign's ring below this (with the other three fingers up)
+  settle: 0.25                        # a hand must be in view this long before its motions count
+  swipe_min_time: 0.2                 # a swipe is the palm's travel over at least this long...
+  swipe_max_time: 0.6                 # ...and at most this long
+  swipe_distance: 1.8                 # how far the palm must travel...
+  swipe_min_travel: 0.12              # ...and at least this share of the image height
+  swipe_straightness: 2.0             # travel along the swipe's direction / travel across it
+  swipe_cooldown: 0.6                 # after a swipe, no swipe at all for this long
+  swipe_return_block: 1.2             # ...and none back the other way (the hand returning) for this long
+  wave_window: 1.6                    # a wave's swings must all happen within this long...
+  wave_swings: 3                      # ...at least this many swings (left, right, left)...
+  wave_min_swing: 0.35                # ...each at least this wide...
+  wave_max_swing: 1.7                 # ...and at most this wide (wider is a swipe)
+  circle_window: 2.0                  # a circle must be drawn within this long...
+  circle_turn: 300                    # ...turning at least this many degrees...
+  circle_min_radius: 0.3              # ...with at least this radius
+  push_window: 0.7                    # a push or pull happens within this long...
+  push_scale: 1.3                     # ...the palm growing (push) or shrinking (pull) by at least this factor
+  motion_cooldown: 1.0                # after a wave, circle, push or pull, no other of them for this long
+  two_hand_window: 1.0                # hands_apart / hands_together must happen within this long
+  together_distance: 1.8              # palm centres closer than this are together...
+  apart_distance: 3.0                 # ...and farther than this are apart
+  two_hand_gap: 0.35                  # one of the two hands may drop out of view this long
+  two_hand_cooldown: 1.5              # after a two-hand gesture, neither is reported again for this long
+  two_hand_quiet: 1.0                 # while two open hands are up, and this long after (or after a two-hand
+                                      # gesture), no hand shape is reported: spreading both palms is no open_palm
+  presence_debounce: 0.15             # a change in the number of hands must last this long to be reported
+
+# Gestures the tracker never reports (reloaded live), e.g. ignore: [pinch, swipe_up]
+ignore: []

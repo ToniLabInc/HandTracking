@@ -1,0 +1,29 @@
+# A Pi's own files, made by deploy/install-pi.sh: its settings, the token, its camera and user; and this PC's pi.yaml
+deploy/config/
+deploy/secrets/
+deploy/compose.override.yaml
+deploy/pi.yaml
+.env
+*.token
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# Test media and models (never commit camera frames)
+*.task
+*.avi
+*.mp4
+*.mjpg
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+.DS_Store

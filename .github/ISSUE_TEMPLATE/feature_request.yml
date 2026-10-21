@@ -1,0 +1,19 @@
+name: Feature request
+description: A new gesture, a setting, support for another camera or board, a change to the MCP interface.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What do you want to do that you can't now?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like it to do?
+      description: For a gesture, describe how it is made and what it must not be confused with.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What have you tried instead?

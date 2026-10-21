@@ -1,0 +1,37 @@
+# ORION hands on the Raspberry Pi: the tracker, an MCP server on the LAN that Orion connects to.
+#
+# First time, and to update: ./install-pi.sh (Docker, this Pi's own files, the image built here, start).
+# From the PC: deploy/push-pi.sh copies the code over and runs install-pi.sh here.
+# Afterwards, from this folder:  docker compose up -d  |  docker compose logs -f tracker  |  docker compose down
+#
+# This Pi's own files, made by install-pi.sh and never in git:
+#   config/tracker.yaml      your settings, laid over the tracker's defaults.yaml (only what you change)
+#   secrets/hands_token      the bearer token Orion sends
+#   compose.override.yaml    this Pi's camera and the user the tracker runs as (compose reads it with this file)
+name: orion-hands
+
+services:
+  tracker:
+    image: orion-hands:latest  # built here by install-pi.sh (the image the Pi runs never comes from a registry)
+    pull_policy: never
+    container_name: orion-hands
+    restart: unless-stopped
+    network_mode: host  # the endpoint on the Pi's own addresses (server.port); it answers LAN clients only
+    volumes:
+      - ./config:/config:ro  # tracker.yaml: read at start; recognition and ignore reload when it is saved
+      - /etc/localtime:/etc/localtime:ro  # log times in the Pi's time zone
+    secrets:
+      - hands_token  # /run/secrets/hands_token (server.token_file)
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 10s
+    logging:
+      driver: json-file
+      options: {max-size: 5m, max-file: "3"}
+
+secrets:
+  hands_token:
+    file: ./secrets/hands_token

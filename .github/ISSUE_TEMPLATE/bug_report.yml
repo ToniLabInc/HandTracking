@@ -1,0 +1,47 @@
+name: Bug report
+description: "Something doesn't work: a gesture isn't recognised, the tracker won't start, a deploy fails."
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. **Don't paste your token** (`deploy/secrets/hands_token`) or camera pictures of
+        other people. For a security problem use the Security tab instead (see SECURITY.md).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      description: For a gesture, say which one, what you did and what the tracker reported (the log has one line per gesture).
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to reproduce it
+      placeholder: "1. ...\n2. ..."
+  - type: input
+    id: version
+    attributes:
+      label: Tracker version
+      description: "`curl http://<pi>:8770/health` prints it (`version`)."
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Board and camera
+      placeholder: "Raspberry Pi 5 8 GB, Raspberry Pi OS 64-bit, <camera model>"
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Your settings
+      description: The contents of `deploy/config/tracker.yaml` (only what you changed from `defaults.yaml`), if any.
+      render: yaml
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log
+      description: "`docker compose logs --tail 100 tracker`, run in `deploy/`."
+      render: text

@@ -1,0 +1,131 @@
+# Lint and test the tracker and the deploy scripts; then build the tracker's image for the Raspberry Pi (linux/arm64)
+# and PCs (linux/amd64), smoke-test the amd64 one as an MCP server, and push them to GHCR: `latest` from main, and
+# every commit's sha. The Pi builds its own image (deploy/install-pi.sh): these builds check that it builds.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tracker:
+    name: Tracker
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tracker
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: tracker/requirements-test.txt
+      - run: pip install -r requirements-test.txt
+      - run: ruff check .
+      - run: pytest
+
+  deploy:
+    name: Deploy files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: shellcheck deploy/install-pi.sh deploy/push-pi.sh
+      - name: compose.yaml is valid (with an example Pi's own files)
+        working-directory: deploy
+        run: |
+          mkdir -p secrets && echo smoke-test-token-smoke-test > secrets/hands_token
+          cp compose.override.example.yaml compose.override.yaml
+          docker compose config --quiet
+
+  image:
+    name: Image
+    needs: [tracker, deploy]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-qemu-action@v4
+        with:
+          platforms: arm64
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Name the image after this repository (GHCR wants lowercase)
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=long,prefix=
+      - name: Load the amd64 image for a smoke test
+        uses: docker/build-push-action@v7
+        with:
+          context: tracker
+          platforms: linux/amd64
+          load: true
+          tags: handtracking:smoke
+          build-args: BUILD=${{ github.sha }}
+          cache-from: type=gha
+          provenance: false
+      - name: Smoke test (the model runs; the MCP endpoint comes up without a camera, behind its token)
+        run: |
+          docker run --rm --read-only --tmpfs /tmp --entrypoint sh handtracking:smoke -c '
+            python -c "import cv2, numpy; cv2.imwrite(\"/tmp/blank.jpg\", numpy.zeros((480, 640, 3), numpy.uint8))" &&
+            python -m handtracker recognize /tmp/blank.jpg' | tee recognize.json
+          grep -q '"hands": \[\]' recognize.json
+          mkdir smoke && printf 'camera:\n  device: /dev/no-camera\n' > smoke/tracker.yaml
+          echo smoke-test-token-smoke-test > smoke/token && chmod 644 smoke/tracker.yaml smoke/token
+          docker run -d --name smoke --read-only --tmpfs /tmp -p 8770:8770 \
+            -v "$PWD/smoke/tracker.yaml:/config/tracker.yaml:ro" -v "$PWD/smoke/token:/run/secrets/hands_token:ro" \
+            handtracking:smoke
+          for _ in $(seq 30); do curl -fsS localhost:8770/health && break; sleep 1; done
+          curl -s localhost:8770/health | grep -q '"camera":false'
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8770/mcp)" = 401
+          docker exec smoke python -c '
+          import asyncio, json
+          from mcp import Client
+          from mcp.client.streamable_http import create_mcp_http_client, streamable_http_client
+
+          async def main():
+              headers = {"Authorization": "Bearer smoke-test-token-smoke-test"}
+              async with create_mcp_http_client(headers=headers) as http, \
+                      Client(streamable_http_client("http://127.0.0.1:8770/mcp", http_client=http)) as client:
+                  tools = sorted(t.name for t in (await client.list_tools()).tools)
+                  vocabulary = json.loads((await client.read_resource("orion://gestures")).contents[0].text)
+                  assert tools == ["hands_gestures", "hands_pause", "hands_resume", "hands_status"], tools
+                  assert len(vocabulary["gestures"]) == 22, vocabulary
+                  print("MCP ok:", client.protocol_version, tools)
+
+          asyncio.run(main())'
+          docker logs smoke
+          docker rm -f smoke
+      - name: Build (and on main, push) for arm64 and amd64
+        uses: docker/build-push-action@v7
+        with:
+          context: tracker
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: BUILD=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false

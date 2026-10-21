@@ -1,0 +1,6 @@
+# What the tracker's lint and unit tests need (no camera, no model, no OpenCV): pip install -r requirements-test.txt
+mcp==2.3.0
+pyyaml==6.0.3
+pytest==9.1.1
+pytest-asyncio==1.4.0
+ruff==0.16.10

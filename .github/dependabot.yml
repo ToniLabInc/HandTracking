@@ -1,0 +1,12 @@
+# Keeps the CI actions and the image's base image current. The tracker's Python packages are pinned with hashes in
+# tracker/requirements.txt: refresh them with the command at the top of that file (Dependabot can't regenerate it).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /tracker
+    schedule:
+      interval: weekly

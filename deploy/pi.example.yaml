@@ -1,0 +1,4 @@
+# Where deploy/push-pi.sh deploys from the PC: copy this file to deploy/pi.yaml (not in git) and fill it in.
+host: pi@raspberrypi.local  # the Pi's SSH login, user@host (its name on the LAN, or its address)
+key: ~/.ssh/id_ed25519      # the SSH key for it
+dir: HandTracking           # the folder on the Pi, from its home, that holds tracker/ and deploy/
